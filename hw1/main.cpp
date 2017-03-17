@@ -5,6 +5,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <cstring>
+#include <map>
+#include <sys/types.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <regex>
 
 using namespace std;
 
@@ -165,32 +171,140 @@ vector<proc_net> read_net(const char* address_net, const char* type){
     return read_net(address_net, ipv4, tcp);
 }
 
+bool is_number(char* str){
+    for(int i=0;str[i]!='\0';++i){
+        if(isdigit(str[i]) == false)
+            return false;
+    }
+    return true;
+}
+
+char* get_program_name(char* full_path){
+    char* rtn = NULL;
+    for(int i=0;full_path[i]!='\0';++i){
+        if(full_path[i] == '/')
+            rtn = full_path + i;
+    }
+    return rtn+1;
+}
+
+int get_inode_from_fd_link(char* fd_link){
+    if(strncmp(fd_link, "socket:[", 8) != 0)
+        return -1;
+    return atoi(fd_link+8);
+}
+
+map<int, program> build_inode_program_map(void){
+    map<int, program> inode_program;
+
+    // read through /proc/[PID]s
+    DIR* proc_dir = opendir("/proc/");
+    struct dirent *pid_dir_ptr;
+    while((pid_dir_ptr = readdir(proc_dir))!=NULL){
+        if(is_number(pid_dir_ptr->d_name)){
+            // get pid and name for program structure
+            char exe_path[200] = {0};
+            char full_link_exe[200] = {0};
+            program this_program;
+            this_program.PID = atoi(pid_dir_ptr->d_name);
+            sprintf(exe_path, "/proc/%s/exe", pid_dir_ptr->d_name);
+            if(readlink(exe_path, full_link_exe, 200) == -1)
+                continue;
+            strcpy(this_program.name, get_program_name(full_link_exe));
+
+            // read through /proc/[PID]/fd/[fd_number]s
+            struct dirent *fd_dir_ptr;
+            char fd_dir_address[200] = {0};
+            DIR* fd_dir;
+            sprintf(fd_dir_address, "/proc/%s/fd", pid_dir_ptr->d_name);
+            fd_dir = opendir(fd_dir_address);
+            while((fd_dir_ptr = readdir(fd_dir)) != NULL){
+                if(is_number(fd_dir_ptr->d_name)){
+                    char fd_path[200] = {0};
+                    char link_path[200] = {0};
+                    int inode = 0;
+                    sprintf(fd_path, "/proc/%s/fd/%s", pid_dir_ptr->d_name, fd_dir_ptr->d_name);
+                    if(readlink(fd_path, link_path, 200) == -1)
+                        continue;
+                    if((inode = get_inode_from_fd_link(link_path)) != -1){
+                        inode_program[inode] = this_program;
+                    }
+                }
+            }
+        }
+    }
+
+    return inode_program;
+}
+
 void print_title(void){
     cout << "Proto Local Address"<< "\t\t" << "Foreign Address" << "\t\t" << "PID/Program name and arguments" <<endl;
     return;
 }
 
-void print_net(vector<proc_net> &nets){
-    for(int i=0;i<nets.size();++i){
-        if(nets[i].tcp)
-            cout << "tcp";
-        else
-            cout << "udp";
-        if(nets[i].ipv4 == false)
-            cout << "6";
-        else
-            cout << " ";
-        cout << "  ";
-        cout << nets[i].local_ip << ":" << nets[i].local_port << "\t\t";
-        // ip:port is too short
-        if(strlen(nets[i].local_ip) + number_of_digits(nets[i].local_port) < 8)
-            cout << "\t";
+void print_tcp_udp(proc_net &net){
+    if(net.tcp)
+        cout << "tcp";
+    else
+        cout << "udp";
+    if(net.ipv4 == false)
+        cout << "6";
+    else
+        cout << " ";
+    cout << "  ";
+    return;
+}
 
-        cout << nets[i].remote_ip << ":";
-        if(nets[i].remote_port != 0)
-            cout << nets[i].remote_port << "\t\t";
-        else
-            cout << "*" << "\t\t";
+void print_local_ip_port(proc_net &net){
+    cout << net.local_ip << ":" << net.local_port << "\t";
+    // ip:port is too short
+    if(strlen(net.local_ip) + number_of_digits(net.local_port) < 8)
+        cout << "\t";
+    if(strlen(net.local_ip) + number_of_digits(net.local_port) < 16)
+        cout << "\t";
+    return;
+}
+
+void print_remote_ip_port(proc_net &net){
+    cout << net.remote_ip << ":";
+    if(net.remote_port != 0)
+        cout << net.remote_port << "\t";
+    else
+        cout << "*" << "\t";
+    // ip:port is too short
+    if(strlen(net.remote_ip) + number_of_digits(net.remote_port) < 8)
+        cout << "\t";
+    if(strlen(net.remote_ip) + number_of_digits(net.remote_port) < 16)
+        cout << "\t";
+    return;
+}
+
+void print_net(vector<proc_net> &nets, map<int, program> &inode_program, bool use_filter, char* filter){
+    for(int i=0;i<nets.size();++i){
+        if(use_filter){
+            if(inode_program.find(nets[i].inode) != inode_program.end()){ // find
+                program &this_program = inode_program[ nets[i].inode ];
+                try{
+                    regex regex_filter(filter);
+                    if(regex_search(std::string(this_program.name), regex_filter) == false)
+                        continue;
+                } catch(regex_error &e){
+                    continue;
+                }
+            }
+            else // not find
+                continue;
+        }
+        print_tcp_udp(nets[i]);
+        print_local_ip_port(nets[i]);
+        print_remote_ip_port(nets[i]);
+
+        //print pid and program name
+        if(inode_program.find(nets[i].inode) != inode_program.end()){
+            program &this_program = inode_program[ nets[i].inode ];
+            cout << this_program.PID << "/" << this_program.name;
+        }
+
         cout <<endl;
     }
     return;
@@ -198,22 +312,52 @@ void print_net(vector<proc_net> &nets){
 
 int main(int argc, char *argv[]){
 
+    const char* short_options = "tu";
+    struct option long_options[] = {
+        { "tcp", 0, NULL, 't' },
+        { "udp", 0, NULL, 'u' }
+    };
+
+    bool tcp_only = false;
+    bool udp_only = false;
+    bool use_filter = false;
+    char *filter = NULL;
+    int option;
+    while((option = getopt_long(argc, argv, short_options, long_options, NULL)) != -1){
+        switch (option) {
+            case 't':
+                if(udp_only == false)
+                    tcp_only = true;
+                break;
+            case 'u':
+                if(tcp_only == false)
+                    udp_only = true;
+                break;
+        }
+    }
+    use_filter = optind < argc;
+    filter = argv[optind];
+
+    map<int, program> inode_program = build_inode_program_map();
+
     vector<proc_net> tcps = read_net(ADDRESS_TCP, "tcp");
     vector<proc_net> tcp6s = read_net(ADDRESS_TCP6, "tcp6");
     vector<proc_net> udps = read_net(ADDRESS_UDP, "udp");
     vector<proc_net> udp6s = read_net(ADDRESS_UDP6, "udp6");
 
-
-    cout << "List of TCP connections:" <<endl;
-    print_title();
-    print_net(tcps);
-    print_net(tcp6s);
-
-    cout << endl;
-    cout << "List of UDP connections:" <<endl;
-    print_title();
-    print_net(udps);
-    print_net(udp6s);
+    if(udp_only == false){
+        cout << "List of TCP connections:" <<endl;
+        print_title();
+        print_net(tcps, inode_program, use_filter, filter);
+        print_net(tcp6s, inode_program, use_filter, filter);
+        cout << endl;
+    }
+    if(tcp_only == false){
+        cout << "List of UDP connections:" <<endl;
+        print_title();
+        print_net(udps, inode_program, use_filter, filter);
+        print_net(udp6s, inode_program, use_filter, filter);
+    }
 
     return 0;
 }
