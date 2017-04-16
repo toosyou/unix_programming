@@ -22,6 +22,7 @@ test: test.c
 preprocess: preprocessor.cpp
 	$(CXX) preprocessor.cpp -o pp
 	./pp hw2.c
+	patch -i hw2.patch
 
 clean:
 	rm -rf hw2.so

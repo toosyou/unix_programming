@@ -1,0 +1,165 @@
+--- hw2_old.c	2017-04-17 04:59:57.000000000 +0800
++++ hw2.c	2017-04-17 04:59:37.710625330 +0800
+@@ -106,8 +106,9 @@
+ int closedir(DIR * _){
+ 	int (*_func)(DIR * _)=\
+ 		(int(*)(DIR * _))dlsym(RTLD_NEXT, "closedir");
++    char* gdn = get_dn(_);
+ 	int rtn = _func(_);
+-	mp("[monitor] closedir('%s') = %d\n" , get_dn(_), rtn);
++	mp("[monitor] closedir('%s') = %d\n" , gdn, rtn);
+ 	return rtn;
+ }
+ 
+@@ -252,7 +253,7 @@
+ 		(void(*)(int _))dlsym(RTLD_NEXT, "exit");
+ 	mp("[monitor] exit(%d)\n" , _);
+ 	_func(_);
+-	return;
++	//return;
+ }
+ 
+ char * getenv(const char * _){
+@@ -346,8 +347,9 @@
+ int close(fd_t _){
+ 	int (*_func)(fd_t _)=\
+ 		(int(*)(fd_t _))dlsym(RTLD_NEXT, "close");
++    char* gfn = get_fn_fd(_);
+ 	int rtn = _func(_);
+-	mp("[monitor] close('%s') = %d\n" , get_fn_fd(_), rtn);
++	mp("[monitor] close('%s') = %d\n" , gfn, rtn);
+ 	return rtn;
+ }
+ 
+@@ -372,27 +374,82 @@
+ 		(void(*)(int _))dlsym(RTLD_NEXT, "_exit");
+ 	mp("[monitor] _exit(%d)\n" , _);
+ 	_func(_);
+-	return;
++	//return;
+ }
+ 
+ int execl(const char * _,  const char * __, ...){
+-	int (*_func)(const char * _,  const char * __, ...)=\
+-		(int(*)(const char * _,  const char * __, ...))dlsym(RTLD_NEXT, "execl");
+-	va_list args;
+-	va_start(args, __);
+-	int rtn = _func(_, __, args);
+-	va_end(args);
++    #define INITIAL_ARGV_MAX 1024
++	int (*_func)(const char * _,  char *const * __,  char *const * ___)=\
++		(int(*)(const char * _,  char *const * __,  char *const * ___))dlsym(RTLD_NEXT, "execve");
++    size_t argv_max = INITIAL_ARGV_MAX;
++    const char *initial_argv[INITIAL_ARGV_MAX];
++    const char **argv = initial_argv;
++    va_list args;
++    argv[0] = __;
++
++    va_start(args, __);
++    unsigned int i = 0;
++    while (argv[i++] != NULL){
++        if (i == argv_max){
++            argv_max *= 2;
++            const char **nptr = realloc(argv == initial_argv ? NULL : argv,
++                argv_max * sizeof (const char *));
++            if (nptr == NULL){
++                if (argv != initial_argv)
++                    free (argv);
++                return -1;
++            }
++            if (argv == initial_argv)
++                /* We have to copy the already filled-in data ourselves.  */
++                memcpy (nptr, argv, i * sizeof (const char *));
++            argv = nptr;
++        }
++        argv[i] = va_arg (args, const char *);
++    }
++    va_end (args);
++
++    int rtn = _func(_, (char *const *) argv, (char *const *) environ);
++    if (argv != initial_argv)
++        free (argv);
+ 	mp("[monitor] execl('%s', '%s') = %d\n" , _, __, rtn);
+ 	return rtn;
+ }
+ 
+ int execle(const char * _,  const char * __, ...){
+-	int (*_func)(const char * _,  const char * __, ...)=\
+-		(int(*)(const char * _,  const char * __, ...))dlsym(RTLD_NEXT, "execle");
+-	va_list args;
+-	va_start(args, __);
+-	int rtn = _func(_, __, args);
+-	va_end(args);
++    #define INITIAL_ARGV_MAX 1024
++	int (*_func)(const char * _,  char *const * __,  char *const * ___)=\
++		(int(*)(const char * _,  char *const * __,  char *const * ___))dlsym(RTLD_NEXT, "execve");
++    size_t argv_max = INITIAL_ARGV_MAX;
++    const char *initial_argv[INITIAL_ARGV_MAX];
++    const char **argv = initial_argv;
++    va_list args;
++    argv[0] = __;
++
++    va_start(args, __);
++    unsigned int i = 0;
++    while (argv[i++] != NULL){
++        if (i == argv_max){
++            argv_max *= 2;
++            const char **nptr = realloc(argv == initial_argv ? NULL : argv,
++                argv_max * sizeof (const char *));
++            if (nptr == NULL){
++                if (argv != initial_argv)
++                    free (argv);
++                return -1;
++            }
++            if (argv == initial_argv)
++                /* We have to copy the already filled-in data ourselves.  */
++                memcpy (nptr, argv, i * sizeof (const char *));
++            argv = nptr;
++        }
++        argv[i] = va_arg (args, const char *);
++    }
++    const char *const *envp = va_arg(args, const char *const *);
++    va_end (args);
++
++    int rtn = _func(_, (char *const *) argv, (char *const *) envp);
++    if (argv != initial_argv)
++        free (argv);
+ 	mp("[monitor] execle('%s', '%s') = %d\n" , _, __, rtn);
+ 	return rtn;
+ }
+@@ -400,10 +457,31 @@
+ int execlp(const char * _,  const char * __, ...){
+ 	int (*_func)(const char * _,  const char * __, ...)=\
+ 		(int(*)(const char * _,  const char * __, ...))dlsym(RTLD_NEXT, "execlp");
+-	va_list args;
+-	va_start(args, __);
+-	int rtn = _func(_, __, args);
+-	va_end(args);
++
++    int rtn = -1;
++    int argc;
++    va_list ap;
++    va_start (ap, __);
++    for (argc = 1; va_arg(ap, const char *); argc++){
++        if (argc == INT_MAX){
++            va_end (ap);
++            errno = E2BIG;
++            rtn = -1;
++            break;
++        }
++    }
++
++    int i;
++    char *argv[argc + 1];
++    if(rtn != -1){
++        va_start (ap, __);
++        argv[0] = (char *) __;
++        for (i = 1; i <= argc; i++)
++        argv[i] = va_arg (ap, char *);
++        va_end (ap);
++        va_end (ap);
++        rtn = execvpe(_, argv, environ);
++    }
+ 	mp("[monitor] execlp('%s', '%s') = %d\n" , _, __, rtn);
+ 	return rtn;
+ }

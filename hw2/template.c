@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <wchar.h>
+#include <errno.h>
+#include <sys/param.h>
 
 
 char buf[300];
@@ -35,7 +37,7 @@ char* get_fn(FILE * f){
     sprintf(proclnk, "/proc/self/fd/%d", fno);
     int r = real_readlink(proclnk, buf, 300);
     if (r < 0){
-        printf("%d, failed to readlink\n", fno);
+        //printf("%d, failed to readlink\n", fno);
         r = 0;
     }
     buf[r] = '\0';
@@ -47,7 +49,7 @@ char* get_fn_fd(int fd){
     sprintf(proclnk, "/proc/self/fd/%d", fd);
     int r = real_readlink(proclnk, buf, 300);
     if (r < 0){
-        printf("%d, failed to readlink\n", fd);
+        //printf("%d, failed to readlink\n", fd);
         r = 0;
     }
     buf[r] = '\0';
