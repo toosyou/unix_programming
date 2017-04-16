@@ -87,7 +87,6 @@ FILE* get_oldest_fd(){
 
 int mp(const char* fmt, ...){
 
-    char* addr_out = mygetenv("MONITOR_OUTPUT");
     FILE *pf = get_oldest_fd();
     int rtn = -1;
 
