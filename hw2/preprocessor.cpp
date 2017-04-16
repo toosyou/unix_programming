@@ -11,32 +11,6 @@
 
 using namespace std;
 
-char pre_defines[]= \
-"#define _GNU_SOURCE // for RTLD_NEXT\n\n\
-#include <stdio.h>\n\
-#include <stdlib.h>\n\
-#include <stdarg.h>\n\
-#include <dlfcn.h>\n\
-#include <string.h>\n\
-#include <dirent.h>\n\
-#include <unistd.h>\n\
-#include <sys/stat.h>\n\
-\n\
-char buf[300];\n\
-char* get_fn(FILE * f){\n\
-    int fno = fileno(f);\n\
-    char proclnk[300];\n\
-    sprintf(proclnk, \"/proc/self/fd/%d\", fno);\n\
-    int r = readlink(proclnk, buf, 300);\n\
-    if (r < 0)\n\
-    {\n\
-        printf(\"failed to readlink\\n\");\n\
-        exit(1);\n\
-    }\n\
-    buf[r] = '\\0';\n\
-    return buf;\n\
-}\n";
-
 struct func{
     string rtn_type;
     string name;
@@ -64,6 +38,13 @@ void remove_ending_space(char* &p){
     }
     p[index_last_space] = '\0';
     return;
+}
+
+int number_star(string arg){
+    int n = 0;
+    for(string::iterator it=arg.begin();it!=arg.end();++it)
+        if(*it == '*') n++;
+    return n;
 }
 
 bool string_exist(string s, const char* target){
@@ -179,6 +160,15 @@ string get_arg_format(string arg){
     else if( string_exist(arg, "FILE") && string_exist(arg, "*")){
         ss << "\'%s\'";
     }
+    else if( string_exist(arg, "DIR") && string_exist(arg, "*")){
+        ss << "\'%s\'";
+    }
+    else if(string_exist(arg, "fd_t")){
+        if(string_exist(arg, "*"))
+            ss << "%p";
+        else
+            ss << "\'%s\'";
+    }
     else{
         if( string_exist(arg, "*"))
             ss << "%p";
@@ -193,6 +183,12 @@ string get_parm(func f){
     for(size_t i=0, sa=f.arg_type.size(); i<sa; ++i){
         if(string_exist(f.arg_type[i], "FILE") && string_exist(f.arg_type[i], "*"))
             ss << ", get_fn(" << string(i+1, '_') << ")";
+        if(string_exist(f.arg_type[i], "DIR") && string_exist(f.arg_type[i], "*"))
+            ss << ", get_dn(" << string(i+1, '_') << ")";
+        else if(string_exist(f.arg_type[i], "fd_t") && !string_exist(f.arg_type[i], "*"))
+            ss << ", get_fn_fd(" << string(i+1, '_') <<")";
+        else if(string_exist(f.arg_type[i], "char") && number_star(f.arg_type[i]) > 1)
+            ss << ", " << string(number_star(f.arg_type[i])-1, '*') << string(i+1, '_');
         else
             ss << ", " << string(i+1, '_');
     }
@@ -202,7 +198,7 @@ string get_parm(func f){
 string get_monitor_string(func f){
     stringstream ss;
     //printf("[monitor] func_name(...)");
-    ss << "\tprintf(\"[monitor] " << f.name << "(";
+    ss << "\tmp(\"[monitor] " << f.name << "(";
     for(vector<string>::iterator it=f.arg_type.begin();it!=f.arg_type.end();++it){
         string arg = *it;
         ss << get_arg_format(arg);
@@ -285,10 +281,20 @@ void output_func(fstream &out, func f){
     return;
 }
 
+void output_predefine(fstream &out, const char* addr_pd){
+    fstream in_pd(addr_pd, fstream::in);
+    char buffer[300];
+    while( in_pd.getline(buffer, 300) ){
+        out << buffer <<endl;
+    }
+    cout << endl;
+    in_pd.close();
+    return;
+}
+
 void output_c(const char* addr_c, vector<func> funcs){
     fstream out_c(addr_c, fstream::out);
-
-    out_c << pre_defines <<endl;
+    output_predefine(out_c, "template.c");
 
     for(size_t i=0,sf=funcs.size();i<sf;++i){
         output_func(out_c, funcs[i]);
