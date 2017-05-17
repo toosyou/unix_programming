@@ -1,0 +1,11 @@
+1. Compile and run:
+    Simply use 'make' command to compile the code, and './myshell' to run the shell.
+2. Implemented features:
+    (1) [10%] Execute a single command.
+    (2) [10%] Properly block or unblock signals.
+    (3) [10%] Replace standard input/output of a process using the redirection operators (< and >).
+    (4) [10%] Setup foreground process group and background process groups.
+    (5) [10%] Create pipeline for commands separated by the pipe operator (|), and put the commands into the same process group.
+    (6) [10%] Manipulate environment variables: provide commands like export and unset to add and remove environment variables, respectively.
+    (7) [10%] Expand of the * and ? operators.
+    (8) [30%] Job control: support process suspension using Ctrl-Z, and jobs, fg and bg command.
