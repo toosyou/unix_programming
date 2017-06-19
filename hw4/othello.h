@@ -17,6 +17,8 @@ extern int board[BOARDSZ][BOARDSZ];
 void init_board();
 void init_colors();
 
+int score(const int index_player);
+bool valid_remain(const bool your_turn, const int index_player);
 bool put_piece(const int x, const int y, const bool your_turn, const int index_player, bool try_put = false);
 void draw_turn(bool your_turn, int index_player);
 void draw_message(const char *msg, int highlight);

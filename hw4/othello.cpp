@@ -3,6 +3,8 @@
 #define	PLAYER1SYM	('O')
 #define	PLAYER2SYM	('X')
 
+#define GAME_OVER_TEST false
+
 int board[BOARDSZ][BOARDSZ];
 
 static int const box_top = 1;
@@ -168,7 +170,18 @@ check_dir_func check_direction_funcs[] = {
 };
 
 bool
-put_piece(const int x, const int y, const bool your_turn, const int index_player, bool try_put = false){
+valid_remain(const bool your_turn, const int index_player){
+	for(int i=0;i<BOARDSZ;++i){
+		for(int j=0;j<BOARDSZ;++j){
+			if( put_piece(i, j, your_turn, index_player, true) == true ) // valid places remain
+				return true;
+		}
+	}
+	return false;
+}
+
+bool
+put_piece(const int x, const int y, const bool your_turn, const int index_player, bool try_put){
 	if(board[y][x] != 0)
 		return false;
 	// check around (x, y)
@@ -221,6 +234,15 @@ init_board() {
 	bzero(board, sizeof(board));
 	board[3][3] = board[4][4] = PLAYER1;
 	board[3][4] = board[4][3] = PLAYER2;
+	// test for game over
+	if(GAME_OVER_TEST){
+		for(int i=0;i<BOARDSZ;++i){
+			for(int j=0;j<BOARDSZ;++j){
+				board[i][j] = 2*((i+j)%2) - 1;
+			}
+		}
+		board[0][0] = 0;
+	}
 }
 
 void
@@ -332,6 +354,19 @@ draw_board() {
 		}
 	}
 	return;
+}
+
+int
+score(const int index_player){
+	int i, j;
+	int black = 0, white = 0;
+	for(i = 0; i < BOARDSZ; i++) {
+		for(j = 0; j < BOARDSZ; j++) {
+			if(board[i][j] == PLAYER1) white++;
+			if(board[i][j] == PLAYER2) black++;
+		}
+	}
+	return index_player == 1 ? white : black;
 }
 
 void

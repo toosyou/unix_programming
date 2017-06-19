@@ -23,6 +23,8 @@ using namespace std;
 int play_game(int sockfd, bool first, int index_player = 1){
 
     bool need_draw_turn = true;
+    bool passed = false;
+    bool game_over = false;
     bool your_turn = first;
 
     initscr();			// start curses mode
@@ -53,6 +55,7 @@ int play_game(int sockfd, bool first, int index_player = 1){
 	while(true) {			// main loop
         bool turn = false;
         int ch = getch();
+		int moved = 0;
         if( your_turn ){ // yes your turn, eat from keyboard and send it through
             char buffer[5];
             if( ch != ERR){
@@ -77,12 +80,45 @@ int play_game(int sockfd, bool first, int index_player = 1){
                 ch = atoi(buffer);
             }
         }
-		int moved = 0;
 
+        // if game over, wait for 'q' and 'Q' and display win or lose
+        if(game_over){
+            // count score
+            attron(A_BOLD);
+            if( score(index_player) > score(3-index_player) ){ // win
+            	move(height/2, width/2);	printw("YOU WON!");
+                move(height/2+1, width/2);	printw("PRESS Q TO QUIT!");
+            }
+            else{ // lose
+                move(height/2, width/2);	printw("YOU LOSED!");
+                move(height/2+1, width/2);	printw("PRESS Q TO QUIT!");
+            }
+            attroff(A_BOLD);
+            if( ch == 'q' || ch == 'Q' )
+                goto quit;
+            else
+                continue;
+        }
+
+        // draw turns infomation
         if( need_draw_turn ){
             draw_turn(your_turn, index_player);
             need_draw_turn = false;
         }
+
+        // no valid places remain
+        if( !valid_remain(your_turn, index_player) ){
+            your_turn = !your_turn;
+            need_draw_turn = true;
+            if( passed == true ){ // game over
+                game_over = true;
+            }
+            passed = true;
+            continue;
+        }
+        else
+            passed = false;
+
 
 		switch(ch) {
     		case ' ':
