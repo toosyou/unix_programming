@@ -20,8 +20,9 @@ static int cy = 3;
 
 using namespace std;
 
-int play_game(int sockfd, bool first){
+int play_game(int sockfd, bool first, int index_player = 1){
 
+    bool need_draw_turn = true;
     bool your_turn = first;
 
     initscr();			// start curses mode
@@ -36,7 +37,7 @@ int play_game(int sockfd, bool first){
 
 	init_colors();
 
- restart:
+    // start
 	clear();
 	cx = cy = 3;
 	init_board();
@@ -46,7 +47,7 @@ int play_game(int sockfd, bool first){
 	refresh();
 
 	attron(A_BOLD);
-	move(height-1, 0);	printw("Arrow keys: move; Space: put GREEN; Return: put PURPLE; R: reset; Q: quit");
+	move(height-1, 0);	printw("Arrow keys: move; Space/Enter: put; Q: quit");
 	attroff(A_BOLD);
 
 	while(true) {			// main loop
@@ -54,15 +55,17 @@ int play_game(int sockfd, bool first){
         int ch = getch();
         if( your_turn ){ // yes your turn, eat from keyboard and send it through
             char buffer[5];
-            sprintf(buffer, "%d", ch);
-            write(sockfd, buffer, sizeof(buffer)-1);
+            if( ch != ERR){
+                sprintf(buffer, "%d", ch);
+                write(sockfd, buffer, sizeof(buffer)-1);
+            }
             if( read(sockfd, buffer, sizeof(buffer)-1) != -1){ // someone want to say something
                 ch = buffer[0];
             }
         }
         else{ // not your turn
             char buffer[5];
-            if( ch == 'r' || ch == 'R' || ch == 'q' || ch == 'Q'){ // not your turn but you pressed 'r' or 'q'
+            if( ch == 'q' || ch == 'Q'){ // not your turn but you pressed 'r' or 'q'
                 buffer[0] = ch;
                 buffer[1] = '\0';
                 write(sockfd, buffer, sizeof(buffer)-1);
@@ -76,28 +79,24 @@ int play_game(int sockfd, bool first){
         }
 		int moved = 0;
 
+        if( need_draw_turn ){
+            draw_turn(your_turn, index_player);
+            need_draw_turn = false;
+        }
+
 		switch(ch) {
     		case ' ':
-    			board[cy][cx] = PLAYER1;
-    			draw_cursor(cx, cy, 1);
-    			draw_score();
-                turn = true;
-    			break;
     		case 0x0d:
     		case 0x0a:
     		case KEY_ENTER:
-    			board[cy][cx] = PLAYER2;
-    			draw_cursor(cx, cy, 1);
-    			draw_score();
-                turn = true;
+                if( put_piece(cx, cy, your_turn, index_player) == true ){ // it's a valid place
+                    turn = true;
+        			draw_score();
+                }
     			break;
     		case 'q':
     		case 'Q':
     			goto quit;
-    			break;
-    		case 'r':
-    		case 'R':
-    			goto restart;
     			break;
     		case 'k':
     		case KEY_UP:
@@ -128,8 +127,10 @@ int play_game(int sockfd, bool first){
     			moved++;
     			break;
 		}
-        if(turn)
+        if(turn){
             your_turn = !your_turn;
+            need_draw_turn = true;
+        }
 		if(moved) {
 			refresh();
 			moved = 0;
@@ -193,7 +194,7 @@ int server(int port){
         cout << "accept!" <<endl;
 
         // send something to the client
-        play_game(clnt_sock, true);
+        play_game(clnt_sock, true, 1); // player 1
         close(clnt_sock);
     }
 
@@ -220,7 +221,7 @@ int client(string ip, int port){
     while( connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) != 0 ) usleep(100 * 1000); // 100ms
 
     // read from server
-    play_game(sock, false);
+    play_game(sock, false, 2); // player 2
 
     // close everything
     close(sock);
