@@ -1,0 +1,10 @@
+Features implemented:
+    1.[10%] Your program can act as either a server (player #1) or a client (player #2) by using the respective command arguments.
+    2.[10%] A server has to wait for a client connection.
+    3.[10%] A client can connect to the given server (IP address or host name).
+    4.[10%] Once connected, display the game board. The game always starts from player #1 (server).
+    5.[10%] Player can only put pieces (discs) on valid places (see game rule).
+    6.[10%] Display correct number of pieces on the game board for the both players.
+    7.[20%] Implement the rest of game logics.
+    8.[10%] When there is no more moves, display a message to show the player wins or loses.
+    9.[10%] Ensure the both two players have the same view of game board. If either the client or the server quits, the peer has to be terminated as well.
